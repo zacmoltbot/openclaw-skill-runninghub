@@ -20,6 +20,7 @@ import base64
 import json
 import mimetypes
 import os
+import shlex
 import struct
 import subprocess
 import sys
@@ -598,6 +599,100 @@ def download_file(url: str, output_path: str) -> str:
     return str(Path(output_path).resolve())
 
 
+def _looks_like_video_output(output_type: str | None, file_path: str | None = None) -> bool:
+    output_type = (output_type or "").lower()
+    if output_type == "video":
+        return True
+    if not file_path:
+        return False
+    return Path(file_path).suffix.lower() in {".mp4", ".mov", ".m4v", ".webm", ".mkv", ".avi"}
+
+
+def probe_video_file(file_path: str) -> tuple[bool, str, dict | None]:
+    cmd = [
+        "ffprobe",
+        "-v", "error",
+        "-show_entries", "format=duration,size:stream=index,codec_type,codec_name",
+        "-of", "json",
+        file_path,
+    ]
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True)
+    except FileNotFoundError:
+        return False, "ffprobe not found in PATH", None
+
+    stderr = (result.stderr or "").strip()
+    stdout = (result.stdout or "").strip()
+    if result.returncode != 0:
+        detail = stderr or stdout or f"ffprobe exited with code {result.returncode}"
+        return False, detail, None
+
+    try:
+        data = json.loads(stdout or "{}")
+    except json.JSONDecodeError as exc:
+        return False, f"ffprobe produced invalid JSON: {exc}", None
+
+    streams = data.get("streams") or []
+    format_info = data.get("format") or {}
+    duration = format_info.get("duration")
+    has_stream_info = any(s.get("codec_type") for s in streams)
+    if duration in (None, "N/A", "") or not has_stream_info:
+        return False, "ffprobe missing duration or stream info", data
+
+    return True, "", data
+
+
+def download_file_with_validation(
+    url: str,
+    output_path: str,
+    *,
+    validate_video: bool = False,
+    max_retries: int = 2,
+) -> str:
+    attempts = max_retries + 1
+    last_error = ""
+    for attempt in range(1, attempts + 1):
+        full_path = download_file(url, output_path)
+        if not validate_video:
+            return full_path
+
+        fixed = fix_mov_to_mp4(full_path)
+        ok, detail, _ = probe_video_file(full_path)
+        if ok:
+            if attempt > 1:
+                print(f"Video download validation recovered on retry {attempt - 1}/{max_retries}: {Path(full_path).name}", file=sys.stderr)
+            return full_path
+
+        last_error = detail or "ffprobe validation failed"
+        print(
+            f"Video download validation failed (attempt {attempt}/{attempts}) for {Path(full_path).name}: {last_error}",
+            file=sys.stderr,
+        )
+        try:
+            Path(full_path).unlink(missing_ok=True)
+        except OSError as exc:
+            print(f"Warning: failed to remove invalid video file {full_path}: {exc}", file=sys.stderr)
+
+        if attempt <= max_retries:
+            print(f"Retrying video download from source URL (attempt {attempt + 1}/{attempts})...", file=sys.stderr)
+            continue
+
+        failure = {
+            "error": "VIDEO_DOWNLOAD_VALIDATION_FAILED",
+            "message": f"Downloaded video failed ffprobe validation after {attempts} attempts",
+            "detail": last_error,
+            "download_url": url,
+            "output_path": str(Path(output_path).resolve()),
+            "ffprobe_cmd": " ".join(shlex.quote(part) for part in ["ffprobe", "-v", "error", "-show_entries", "format=duration,size:stream=index,codec_type,codec_name", "-of", "json", str(Path(output_path).resolve())]),
+        }
+        if fixed:
+            failure["container_fix_attempted"] = True
+        print(json.dumps(failure, ensure_ascii=False), file=sys.stderr)
+        sys.exit(1)
+
+    raise AssertionError("unreachable")
+
+
 def fix_mov_to_mp4(file_path: str) -> bool:
     """Rewrite QuickTime MOV ftyp box to standard MP4 for platform compatibility."""
     try:
@@ -786,8 +881,13 @@ def cmd_execute(args):
         output_path = str(Path(output_path).with_suffix(f".{output_type_ext}"))
 
     print("Downloading result to local file...", file=sys.stderr)
-    full_path = download_file(result_url, output_path)
-    fix_mov_to_mp4(full_path)
+    full_path = download_file_with_validation(
+        result_url,
+        output_path,
+        validate_video=_looks_like_video_output(endpoint_def.get("output_type"), output_path),
+    )
+    if _looks_like_video_output(endpoint_def.get("output_type"), full_path):
+        fix_mov_to_mp4(full_path)
     print(f"OUTPUT_FILE:{full_path}")
     emit_billing_report(before_status, after_status, preflight_mode)
 

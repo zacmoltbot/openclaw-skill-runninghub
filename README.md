@@ -124,6 +124,8 @@ runninghub/
 
 执行标准模型或 AI 应用时，脚本现在会在保留原有 `OUTPUT_FILE:` / `COST:` / `DURATION:` 输出的同时，额外输出结构化账务字段：
 
+视频输出现在会在下载后自动做 `ffprobe` 校验（至少要求读到 `duration` 与 stream info）。若首次下载拿到坏档（例如 `moov atom not found` / `Invalid data found when processing input`），脚本会自动删除坏档并重试下载，最多额外重试 2 次；若仍失败，会以错误结束，并输出可读的失败 JSON，内含原始 `download_url` 供上层 fallback / 人工处理。非视频输出维持原本下载流程。
+
 - `BILLING_MODE:`
 - `BALANCE_BEFORE:` / `BALANCE_AFTER:` / `BALANCE_DELTA:`
 - `COINS_BEFORE:` / `COINS_AFTER:` / `COINS_DELTA:`

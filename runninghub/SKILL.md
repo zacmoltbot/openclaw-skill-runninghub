@@ -7,7 +7,7 @@ metadata:
     "openclaw":
       {
         "emoji": "🎬",
-        "requires": { "bins": ["python3", "curl"] },
+        "requires": { "bins": ["python3", "curl", "ffprobe"] },
         "primaryEnv": "RUNNINGHUB_API_KEY"
       }
   }
@@ -166,5 +166,7 @@ For media delivery and error handling details → Read `{baseDir}/references/out
 
 Key rules (always apply):
 - ALWAYS call `message` tool to deliver media files, then respond `NO_REPLY`.
+- For video outputs, scripts now validate downloaded files with `ffprobe` (must read duration + stream info). If the first download is corrupt, scripts delete the bad file and retry up to 2 times automatically.
+- If video download validation still fails after retries, treat it as a failure (not success). Read the emitted error JSON and surface the raw `download_url` / source URL to the user or upper layer as fallback information.
 - If `message` fails, retry once. If still fails, include `OUTPUT_FILE:<path>` and explain.
 - Print text results directly. Include cost if `COST:` line present.

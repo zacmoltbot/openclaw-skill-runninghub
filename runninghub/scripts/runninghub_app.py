@@ -34,6 +34,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
 from runninghub import (  # noqa: E402
     cmd_check,
+    download_file_with_validation,
     emit_billing_report,
     fetch_account_status,
     fix_mov_to_mp4,
@@ -250,16 +251,6 @@ def submit_task(api_key: str, webapp_id: str, node_info_list: list[dict],
     return data
 
 
-def download_file(url: str, output_path: str) -> str:
-    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-    cmd = ["curl", "-s", "-S", "-L", "-o", output_path, "--max-time", "300", url]
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    if result.returncode != 0:
-        print(f"Download failed: {result.stderr}", file=sys.stderr)
-        sys.exit(1)
-    return str(Path(output_path).resolve())
-
-
 # ---------------------------------------------------------------------------
 # --node / --file argument parsing
 # ---------------------------------------------------------------------------
@@ -451,8 +442,13 @@ def cmd_run(args):
             out_path = f"{out_path}.png"
 
         print(f"Downloading result {i+1}/{len(file_urls)}...", file=sys.stderr)
-        full_path = download_file(url, out_path)
-        fix_mov_to_mp4(full_path)
+        full_path = download_file_with_validation(
+            url,
+            out_path,
+            validate_video=ext.lower() in {"mp4", "mov", "m4v", "webm", "mkv", "avi"},
+        )
+        if ext.lower() in {"mp4", "mov", "m4v", "webm", "mkv", "avi"}:
+            fix_mov_to_mp4(full_path)
         print(f"OUTPUT_FILE:{full_path}")
 
     emit_billing_report(before_status, after_status, preflight_mode)
