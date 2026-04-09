@@ -32,7 +32,15 @@ SUBMIT_PATH = "/task/openapi/ai-app/run"
 SCRIPT_DIR = Path(__file__).resolve().parent
 
 sys.path.insert(0, str(SCRIPT_DIR))
-from runninghub import resolve_api_key, require_api_key, cmd_check, poll_task, fix_mov_to_mp4  # noqa: E402
+from runninghub import (  # noqa: E402
+    cmd_check,
+    emit_billing_report,
+    fetch_account_status,
+    fix_mov_to_mp4,
+    infer_billing_mode,
+    poll_task,
+    require_api_key,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -101,7 +109,6 @@ def _parse_response(result: subprocess.CompletedProcess, context: str) -> dict:
 # ---------------------------------------------------------------------------
 
 def _extract_webapp_id(invoke_example: str) -> str | None:
-    """Extract webappId from the invokeExample cURL string."""
     m = re.search(r'/run/ai-app/(\d+)', invoke_example)
     return m.group(1) if m else None
 
@@ -129,14 +136,12 @@ def list_apps(api_key: str, sort: str = "RECOMMEND", size: int = 10,
         os.unlink(tmp_path)
 
     resp = _parse_response(result, "List AI apps")
-
     if resp.get("code") != 0:
         print(json.dumps({
             "error": "LIST_FAILED",
             "message": resp.get("msg", "Failed to list AI apps"),
         }, ensure_ascii=False), file=sys.stderr)
         sys.exit(1)
-
     return resp.get("data", {})
 
 
@@ -157,8 +162,7 @@ def get_node_info(api_key: str, webapp_id: str) -> list[dict]:
     if not node_list:
         print(json.dumps({
             "error": "NO_NODES",
-            "message": "No modifiable nodes found for this AI app. "
-                       "Make sure the app has been run at least once on the web.",
+            "message": "No modifiable nodes found for this AI app. Make sure the app has been run at least once on the web.",
         }, ensure_ascii=False), file=sys.stderr)
         sys.exit(1)
 
@@ -261,7 +265,6 @@ def download_file(url: str, output_path: str) -> str:
 # ---------------------------------------------------------------------------
 
 def parse_node_arg(arg: str) -> tuple[str, str, str]:
-    """Parse 'nodeId:fieldName=value' into (nodeId, fieldName, value)."""
     colon_idx = arg.find(":")
     if colon_idx == -1:
         print(f"Error: invalid --node format '{arg}', expected nodeId:fieldName=value", file=sys.stderr)
@@ -283,10 +286,7 @@ def apply_modifications(api_key: str, node_list: list[dict],
     if node_args:
         for arg in node_args:
             nid, fname, fval = parse_node_arg(arg)
-            target = next(
-                (n for n in node_list if n["nodeId"] == nid and n["fieldName"] == fname),
-                None,
-            )
+            target = next((n for n in node_list if n["nodeId"] == nid and n["fieldName"] == fname), None)
             if target:
                 target["fieldValue"] = fval
             else:
@@ -296,10 +296,7 @@ def apply_modifications(api_key: str, node_list: list[dict],
         for arg in file_args:
             nid, fname, fpath = parse_node_arg(arg)
             uploaded_name = upload_file(api_key, fpath)
-            target = next(
-                (n for n in node_list if n["nodeId"] == nid and n["fieldName"] == fname),
-                None,
-            )
+            target = next((n for n in node_list if n["nodeId"] == nid and n["fieldName"] == fname), None)
             if target:
                 target["fieldValue"] = uploaded_name
             else:
@@ -313,7 +310,6 @@ def apply_modifications(api_key: str, node_list: list[dict],
 # ---------------------------------------------------------------------------
 
 def _download_cover(url: str, out_path: str) -> bool:
-    """Download a cover image. Returns True on success."""
     if not url:
         return False
     Path(out_path).parent.mkdir(parents=True, exist_ok=True)
@@ -378,18 +374,30 @@ def cmd_run(args):
     api_key = require_api_key(args.api_key)
     webapp_id = args.run
 
+    before_status = fetch_account_status(api_key)
     node_list = get_node_info(api_key, webapp_id)
     node_list = apply_modifications(api_key, node_list, args.node, args.file)
 
+    preflight_mode = infer_billing_mode(
+        {"webappId": webapp_id, "instanceType": args.instance_type or "default"},
+        node_list,
+        before_status.get("api_type"),
+    )
+
     data = submit_task(api_key, webapp_id, node_list, args.instance_type or "default")
     task_id = str(data["taskId"])
-
     final = poll_task(api_key, task_id)
     results = final.get("results")
+    after_status = fetch_account_status(api_key)
 
     usage = final.get("usage") or {}
     consume_money = usage.get("consumeMoney") or usage.get("thirdPartyConsumeMoney")
     task_cost_time = usage.get("taskCostTime")
+    final_billing_mode = infer_billing_mode(final, usage, data, after_status.get("api_type"), preflight_mode)
+    if final_billing_mode != "unknown":
+        after_status["billing_mode"] = final_billing_mode
+        if before_status.get("billing_mode") == "unknown":
+            before_status["billing_mode"] = final_billing_mode
 
     if not results:
         print(json.dumps({
@@ -408,14 +416,17 @@ def cmd_run(args):
     if not file_urls:
         text_results = []
         for item in results:
-            t = item.get("text") or item.get("content") or item.get("output")
-            if t:
-                text_results.append(t)
+            text_value = item.get("text") or item.get("content") or item.get("output")
+            if text_value:
+                text_results.append(text_value)
         if text_results:
-            for t in text_results:
-                print(t)
+            for text_value in text_results:
+                print(text_value)
+            emit_billing_report(before_status, after_status, preflight_mode)
             if consume_money is not None:
                 print(f"COST:¥{consume_money}")
+            if task_cost_time and str(task_cost_time) != "0":
+                print(f"DURATION:{task_cost_time}s")
             return
         print(json.dumps(results, indent=2, ensure_ascii=False))
         return
@@ -444,6 +455,7 @@ def cmd_run(args):
         fix_mov_to_mp4(full_path)
         print(f"OUTPUT_FILE:{full_path}")
 
+    emit_billing_report(before_status, after_status, preflight_mode)
     if consume_money is not None:
         print(f"COST:¥{consume_money}")
     if task_cost_time and str(task_cost_time) != "0":
@@ -477,9 +489,9 @@ Examples:
   python3 runninghub_app.py --list --sort HOTTEST --size 5
   python3 runninghub_app.py --list --sort NEWEST
   python3 runninghub_app.py --info 1877265245566922800
-  python3 runninghub_app.py --run 1877265245566922800 \\
-    --node "52:prompt=a girl dancing" \\
-    --file "39:image=/tmp/photo.jpg" \\
+  python3 runninghub_app.py --run 1877265245566922800 \
+    --node "52:prompt=a girl dancing" \
+    --file "39:image=/tmp/photo.jpg" \
     -o /tmp/result.png
 """,
     )

@@ -20,10 +20,12 @@ import base64
 import json
 import mimetypes
 import os
+import struct
 import subprocess
 import sys
 import tempfile
 import time
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 BASE_URL = "https://www.runninghub.ai/openapi/v2"
@@ -87,11 +89,9 @@ def read_key_from_openclaw_config() -> str | None:
     except Exception:
         return None
     entry = cfg.get("skills", {}).get("entries", {}).get("runninghub", {})
-    # OpenClaw native: skills.entries.runninghub.apiKey (injected via primaryEnv)
     api_key = entry.get("apiKey")
     if isinstance(api_key, str) and api_key.strip():
         return api_key.strip()
-    # Fallback: skills.entries.runninghub.env.RUNNINGHUB_API_KEY
     env_val = entry.get("env", {}).get("RUNNINGHUB_API_KEY")
     if isinstance(env_val, str) and env_val.strip():
         return env_val.strip()
@@ -99,7 +99,6 @@ def read_key_from_openclaw_config() -> str | None:
 
 
 def resolve_api_key(provided_key: str | None) -> str | None:
-    """Resolve API key without exiting. Returns None if not found."""
     if provided_key:
         normalized = provided_key.strip()
         placeholders = {
@@ -219,6 +218,154 @@ def api_post(api_key: str, url: str, payload: dict, timeout: int = 60) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Billing/account helpers
+# ---------------------------------------------------------------------------
+
+def _to_decimal(value) -> Decimal | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return None
+    try:
+        text = str(value).strip()
+    except Exception:
+        return None
+    if not text or text.lower() in {"unknown", "none", "null", "nan"}:
+        return None
+    try:
+        return Decimal(text)
+    except (InvalidOperation, ValueError):
+        return None
+
+
+def _decimal_to_str(value: Decimal | None) -> str:
+    if value is None:
+        return "unknown"
+    normalized = format(value.normalize(), "f")
+    if "." in normalized:
+        normalized = normalized.rstrip("0").rstrip(".")
+    return normalized or "0"
+
+
+def _delta_str(before, after) -> str:
+    before_dec = _to_decimal(before)
+    after_dec = _to_decimal(after)
+    if before_dec is None or after_dec is None:
+        return "unknown"
+    return _decimal_to_str(after_dec - before_dec)
+
+
+def _coerce_unknown(value) -> str:
+    if value is None:
+        return "unknown"
+    text = str(value).strip()
+    return text if text else "unknown"
+
+
+def _safe_nested_values(obj) -> list[str]:
+    values: list[str] = []
+    if isinstance(obj, dict):
+        for key, value in obj.items():
+            values.append(str(key))
+            values.extend(_safe_nested_values(value))
+    elif isinstance(obj, list):
+        for item in obj:
+            values.extend(_safe_nested_values(item))
+    elif obj is not None:
+        values.append(str(obj))
+    return values
+
+
+def infer_billing_mode(*sources) -> str:
+    haystack = " ".join(v.lower() for source in sources for v in _safe_nested_values(source))
+    if not haystack:
+        return "unknown"
+    has_coins = any(token in haystack for token in ["coin", "coins", "remaincoins", "consumecoins", "points"])
+    has_money = any(token in haystack for token in ["money", "balance", "remainmoney", "consumemoney", "currency", "cny", "rmb", "yuan"])
+    if has_money and has_coins:
+        return "mixed"
+    if has_money:
+        return "balance"
+    if has_coins:
+        return "coins"
+    return "unknown"
+
+
+def fetch_account_status(api_key: str) -> dict:
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {api_key}",
+    }
+    result = curl_post_json(ACCOUNT_STATUS_URL, {"apikey": api_key}, headers, timeout=15)
+    base = {
+        "status": "unknown",
+        "balance": "unknown",
+        "currency": "unknown",
+        "coins": "unknown",
+        "running_tasks": "unknown",
+        "api_type": "unknown",
+        "billing_mode": "unknown",
+    }
+
+    if result.returncode != 0:
+        base["status"] = "error"
+        base["detail"] = (result.stdout or result.stderr)[:300]
+        return base
+
+    try:
+        resp = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        base["status"] = "error"
+        base["detail"] = f"Unexpected response: {result.stdout[:300]}"
+        return base
+
+    if resp.get("code") != 0:
+        base["status"] = "invalid_key"
+        base["detail"] = resp.get("msg", "API key verification failed")
+        return base
+
+    data = resp.get("data", {})
+    balance = data.get("remainMoney")
+    base["balance"] = _coerce_unknown(balance)
+    base["currency"] = _coerce_unknown(data.get("currency", "CNY"))
+    base["coins"] = _coerce_unknown(data.get("remainCoins"))
+    base["running_tasks"] = _coerce_unknown(data.get("currentTaskCounts"))
+    base["api_type"] = _coerce_unknown(data.get("apiType"))
+    base["billing_mode"] = infer_billing_mode(data.get("apiType"), data)
+
+    balance_num = _to_decimal(balance)
+    base["status"] = "no_balance" if balance_num is not None and balance_num <= 0 else "ready"
+    return base
+
+
+def emit_billing_report(before: dict | None, after: dict | None, preflight_mode: str = "unknown"):
+    before = before or {}
+    after = after or {}
+    final_mode = next(
+        (
+            mode for mode in [
+                _coerce_unknown(after.get("billing_mode")),
+                _coerce_unknown(before.get("billing_mode")),
+                _coerce_unknown(preflight_mode),
+            ] if mode != "unknown"
+        ),
+        "unknown",
+    )
+    print(f"BILLING_MODE:{final_mode}")
+    print(f"BALANCE_BEFORE:{_coerce_unknown(before.get('balance'))}")
+    print(f"BALANCE_AFTER:{_coerce_unknown(after.get('balance'))}")
+    print(f"BALANCE_DELTA:{_delta_str(before.get('balance'), after.get('balance'))}")
+    print(f"COINS_BEFORE:{_coerce_unknown(before.get('coins'))}")
+    print(f"COINS_AFTER:{_coerce_unknown(after.get('coins'))}")
+    print(f"COINS_DELTA:{_delta_str(before.get('coins'), after.get('coins'))}")
+    print(f"RUNNING_TASKS_BEFORE:{_coerce_unknown(before.get('running_tasks'))}")
+    print(f"RUNNING_TASKS_AFTER:{_coerce_unknown(after.get('running_tasks'))}")
+    print(f"API_TYPE_BEFORE:{_coerce_unknown(before.get('api_type'))}")
+    print(f"API_TYPE_AFTER:{_coerce_unknown(after.get('api_type'))}")
+    print(f"PREFLIGHT_BILLING_MODE:{_coerce_unknown(preflight_mode)}")
+
+
+# ---------------------------------------------------------------------------
 # --check: account health check
 # ---------------------------------------------------------------------------
 
@@ -239,64 +386,40 @@ def cmd_check(api_key_arg: str | None):
 
     key_prefix = key[:4] + "****"
     key_source = get_key_source(api_key_arg)
+    status = fetch_account_status(key)
 
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {key}",
-    }
-    result = curl_post_json(ACCOUNT_STATUS_URL, {"apikey": key}, headers, timeout=15)
-
-    if result.returncode != 0:
+    if status["status"] == "error":
         print(json.dumps({
             "status": "invalid_key",
             "key_prefix": key_prefix,
             "key_source": key_source,
             "message": "API key is invalid or expired, or network error",
-            "detail": (result.stdout or result.stderr)[:300],
+            "detail": status.get("detail", ""),
             "manage_url": "https://www.runninghub.ai/enterprise-api/sharedApi",
         }, ensure_ascii=False))
         return
 
-    try:
-        resp = json.loads(result.stdout)
-    except json.JSONDecodeError:
-        print(json.dumps({
-            "status": "error",
-            "key_prefix": key_prefix,
-            "message": f"Unexpected response: {result.stdout[:300]}",
-        }, ensure_ascii=False))
-        return
-
-    if resp.get("code") != 0:
+    if status["status"] == "invalid_key":
         print(json.dumps({
             "status": "invalid_key",
             "key_prefix": key_prefix,
             "key_source": key_source,
-            "message": resp.get("msg", "API key verification failed"),
+            "message": status.get("detail", "API key verification failed"),
             "manage_url": "https://www.runninghub.ai/enterprise-api/sharedApi",
         }, ensure_ascii=False))
         return
 
-    data = resp.get("data", {})
-    balance = data.get("remainMoney")
-    balance_str = str(balance) if balance is not None else "0"
-    currency = data.get("currency", "CNY")
-
-    try:
-        balance_num = float(balance_str)
-    except (ValueError, TypeError):
-        balance_num = 0.0
-
-    if balance_num <= 0:
+    if status["status"] == "no_balance":
         print(json.dumps({
             "status": "no_balance",
             "key_prefix": key_prefix,
             "key_source": key_source,
-            "balance": balance_str,
-            "currency": currency,
-            "coins": data.get("remainCoins", "0"),
-            "running_tasks": data.get("currentTaskCounts", "0"),
-            "api_type": data.get("apiType", ""),
+            "balance": status["balance"],
+            "currency": status["currency"],
+            "coins": status["coins"],
+            "running_tasks": status["running_tasks"],
+            "api_type": status["api_type"],
+            "billing_mode": status["billing_mode"],
             "message": "Wallet balance is zero. Recharge required.",
             "recharge_url": "https://www.runninghub.ai/vip-rights/4",
         }, ensure_ascii=False))
@@ -306,11 +429,12 @@ def cmd_check(api_key_arg: str | None):
         "status": "ready",
         "key_prefix": key_prefix,
         "key_source": key_source,
-        "balance": balance_str,
-        "currency": currency,
-        "coins": data.get("remainCoins", "0"),
-        "running_tasks": data.get("currentTaskCounts", "0"),
-        "api_type": data.get("apiType", ""),
+        "balance": status["balance"],
+        "currency": status["currency"],
+        "coins": status["coins"],
+        "running_tasks": status["running_tasks"],
+        "api_type": status["api_type"],
+        "billing_mode": status["billing_mode"],
     }, ensure_ascii=False))
 
 
@@ -330,7 +454,6 @@ def cmd_list(type_filter: str | None, task_filter: str | None):
     rows = []
     for e in endpoints:
         name = e["name_cn"] or e["name_en"] or e["endpoint"]
-        tags = ",".join(e["tags"]) if e["tags"] else ""
         pop = e["popularity"] if e["popularity"] < 99 else "-"
         rows.append(f"  [{e['output_type']:6s}] {e['task']:25s} rank={str(pop):3s} {e['endpoint']:60s} {name}")
 
@@ -402,7 +525,6 @@ def resolve_media(api_key: str, media_path: str, force_upload: bool = False) -> 
 # ---------------------------------------------------------------------------
 
 def poll_once(api_key: str, url: str, task_id: str) -> dict | None:
-    """Single poll attempt with retry on transient network errors."""
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {api_key}",
@@ -434,7 +556,7 @@ def poll_task(api_key: str, task_id: str) -> dict:
             consecutive_failures += 1
             print("x", end="", flush=True)
             if consecutive_failures >= 5:
-                print(f"\nToo many consecutive poll failures", file=sys.stderr)
+                print("\nToo many consecutive poll failures", file=sys.stderr)
                 sys.exit(1)
             continue
         consecutive_failures = 0
@@ -476,12 +598,8 @@ def download_file(url: str, output_path: str) -> str:
     return str(Path(output_path).resolve())
 
 
-import struct
-
 def fix_mov_to_mp4(file_path: str) -> bool:
-    """Rewrite QuickTime MOV ftyp box to standard MP4 for platform compatibility.
-    Only touches the ftyp header; no re-encoding, no external dependencies.
-    Returns True if the file was patched."""
+    """Rewrite QuickTime MOV ftyp box to standard MP4 for platform compatibility."""
     try:
         with open(file_path, "rb") as f:
             header = f.read(64)
@@ -505,8 +623,8 @@ def fix_mov_to_mp4(file_path: str) -> bool:
     used_brands = brands[:max_brands]
 
     new_ftyp = struct.pack(">I", box_size) + b"ftyp" + b"isom" + minor_version
-    for b in used_brands:
-        new_ftyp += b
+    for brand in used_brands:
+        new_ftyp += brand
     new_ftyp += b"\x00" * (box_size - len(new_ftyp))
 
     with open(file_path, "r+b") as f:
@@ -517,11 +635,9 @@ def fix_mov_to_mp4(file_path: str) -> bool:
 
 
 def build_payload(endpoint_def: dict, args) -> dict:
-    """Build API payload from endpoint definition and CLI args."""
     api_key = require_api_key(args.api_key)
     payload = {}
 
-    # Collect --param key=value pairs
     extra_params = {}
     if args.param:
         for p in args.param:
@@ -531,7 +647,6 @@ def build_payload(endpoint_def: dict, args) -> dict:
             k, v = p.split("=", 1)
             extra_params[k] = v
 
-    # --prompt is a convenient alias for the "prompt" or "text" param
     prompt_key = None
     for param in endpoint_def["params"]:
         if param["key"] in ("prompt", "text"):
@@ -543,13 +658,11 @@ def build_payload(endpoint_def: dict, args) -> dict:
     elif args.prompt:
         payload["prompt"] = args.prompt
 
-    # Map CLI media inputs to the appropriate payload keys
     media_keys = []
     for param in endpoint_def["params"]:
         if param["type"] in ("IMAGE", "VIDEO", "AUDIO"):
             media_keys.append(param)
 
-    # --image can map to imageUrl, imageUrls, firstImageUrl, etc.
     if args.image:
         image_params = [p for p in media_keys if p["type"] == "IMAGE"]
         if len(args.image) == 1 and len(image_params) >= 1:
@@ -567,7 +680,7 @@ def build_payload(endpoint_def: dict, args) -> dict:
                     resolve_media(api_key, img, force_upload=True) for img in args.image
                 ]
             else:
-                for i, (img, param) in enumerate(zip(args.image, image_params)):
+                for img, param in zip(args.image, image_params):
                     payload[param["key"]] = resolve_media(api_key, img, force_upload=True)
 
     if args.video:
@@ -580,7 +693,6 @@ def build_payload(endpoint_def: dict, args) -> dict:
         if audio_params:
             payload[audio_params[0]["key"]] = resolve_media(api_key, args.audio, force_upload=True)
 
-    # Apply extra --param key=value (overrides defaults)
     for k, v in extra_params.items():
         param_def = next((p for p in endpoint_def["params"] if p["key"] == k), None)
         if param_def and param_def["type"] == "BOOLEAN":
@@ -593,7 +705,6 @@ def build_payload(endpoint_def: dict, args) -> dict:
         else:
             payload[k] = v
 
-    # Fill defaults for required params not yet set
     for param in endpoint_def["params"]:
         if param["key"] not in payload and param.get("required") and "default" in param:
             payload[param["key"]] = param["default"]
@@ -602,10 +713,8 @@ def build_payload(endpoint_def: dict, args) -> dict:
 
 
 def cmd_execute(args):
-    """Execute a generation task."""
     api_key = require_api_key(args.api_key)
 
-    # Resolve endpoint
     if args.endpoint:
         endpoint_def = find_endpoint(args.endpoint)
         if not endpoint_def:
@@ -623,6 +732,8 @@ def cmd_execute(args):
         print("Error: --endpoint or --task is required", file=sys.stderr)
         sys.exit(1)
 
+    before_status = fetch_account_status(api_key)
+    preflight_mode = infer_billing_mode(endpoint_def, before_status.get("api_type"))
     payload = build_payload(endpoint_def, args)
     submit_url = f"{BASE_URL}/{endpoint_def['endpoint']}"
 
@@ -639,20 +750,25 @@ def cmd_execute(args):
         print("Error: no results in final response", file=sys.stderr)
         sys.exit(1)
 
+    after_status = fetch_account_status(api_key)
+    usage = final.get("usage") or {}
+    final_billing_mode = infer_billing_mode(final, usage, endpoint_def, after_status.get("api_type"), preflight_mode)
+    if final_billing_mode != "unknown":
+        after_status["billing_mode"] = final_billing_mode
+        if before_status.get("billing_mode") == "unknown":
+            before_status["billing_mode"] = final_billing_mode
+
     result_item = results[0]
     result_url = result_item.get("url") or result_item.get("outputUrl")
     output_type_ext = result_item.get("outputType", "")
-
-    # Extract cost from usage data
-    usage = final.get("usage") or {}
     consume_money = usage.get("consumeMoney") or usage.get("thirdPartyConsumeMoney")
     task_cost_time = usage.get("taskCostTime")
 
-    # Text results (for string output_type endpoints)
     if not result_url:
         text_result = result_item.get("text") or result_item.get("content") or result_item.get("output")
         if text_result:
             print(text_result)
+            emit_billing_report(before_status, after_status, preflight_mode)
             if consume_money is not None:
                 print(f"COST:¥{consume_money}")
             if task_cost_time and str(task_cost_time) != "0":
@@ -669,10 +785,11 @@ def cmd_execute(args):
     if output_type_ext:
         output_path = str(Path(output_path).with_suffix(f".{output_type_ext}"))
 
-    print(f"Downloading result to local file...", file=sys.stderr)
+    print("Downloading result to local file...", file=sys.stderr)
     full_path = download_file(result_url, output_path)
     fix_mov_to_mp4(full_path)
     print(f"OUTPUT_FILE:{full_path}")
+    emit_billing_report(before_status, after_status, preflight_mode)
 
     if consume_money is not None:
         print(f"COST:¥{consume_money}")
@@ -709,12 +826,9 @@ Examples:
 """,
     )
 
-    # Mode flags
     parser.add_argument("--check", action="store_true", help="Check API key and account status")
     parser.add_argument("--list", action="store_true", help="List available endpoints")
     parser.add_argument("--info", metavar="ENDPOINT", help="Show details for an endpoint")
-
-    # Execution params
     parser.add_argument("--endpoint", "-e", help="API endpoint to call")
     parser.add_argument("--task", "-t", help="Task type (auto-selects best endpoint)")
     parser.add_argument("--prompt", "-p", help="Text prompt")
@@ -724,8 +838,6 @@ Examples:
     parser.add_argument("--param", action="append", help="Extra parameter as key=value (repeatable)")
     parser.add_argument("--output", "-o", help="Output file path")
     parser.add_argument("--api-key", "-k", help="API key (optional, resolved from config)")
-
-    # Filters for --list
     parser.add_argument("--type", dest="type_filter", help="Filter by output type (image/video/audio/3d/string)")
 
     args = parser.parse_args()

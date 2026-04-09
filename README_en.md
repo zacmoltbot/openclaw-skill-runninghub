@@ -103,20 +103,33 @@ runninghub/
 
 | Mode | Command | Purpose |
 |------|---------|---------|
-| **Check** | `--check` | Verify API key + check wallet balance |
+| **Check** | `--check` | Verify API key + inspect balance / coins / API type |
 | **List** | `--list [--type T] [--task T]` | Browse available endpoints |
 | **Info** | `--info ENDPOINT` | View endpoint parameters |
-| **Execute** | `--endpoint EP --prompt "..." -o /tmp/out` | Run with specific endpoint |
-| **Auto** | `--task TASK --prompt "..." -o /tmp/out` | Auto-select best endpoint |
+| **Execute** | `--endpoint EP --prompt "..." -o /tmp/out` | Run with a specific endpoint and emit billing deltas |
+| **Auto** | `--task TASK --prompt "..." -o /tmp/out` | Auto-select the best endpoint and emit billing deltas |
 
 ### AI Application (runninghub_app.py)
 
 | Mode | Command | Purpose |
 |------|---------|---------|
-| **Check** | `--check` | Verify API key + check wallet balance |
+| **Check** | `--check` | Verify API key + inspect balance / coins / API type |
 | **Browse** | `--list [--sort S] [--size N] [--page N]` | Browse recommended/hottest/newest AI apps |
 | **Nodes** | `--info WEBAPP_ID` | Show modifiable nodes for an AI app |
-| **Execute** | `--run WEBAPP_ID --node ... --file ... -o /tmp/out` | Run an AI application |
+| **Execute** | `--run WEBAPP_ID --node ... --file ... -o /tmp/out` | Run an AI application and emit billing deltas |
+
+## Billing / account reporting
+
+When executing either the standard-model client or the AI-app client, the scripts now keep the existing `OUTPUT_FILE:` / `COST:` / `DURATION:` lines and additionally emit structured billing fields:
+
+- `BILLING_MODE:`
+- `BALANCE_BEFORE:` / `BALANCE_AFTER:` / `BALANCE_DELTA:`
+- `COINS_BEFORE:` / `COINS_AFTER:` / `COINS_DELTA:`
+- `RUNNING_TASKS_BEFORE:` / `RUNNING_TASKS_AFTER:`
+- `API_TYPE_BEFORE:` / `API_TYPE_AFTER:`
+- `PREFLIGHT_BILLING_MODE:`
+
+If the billing mode cannot be inferred from account status, endpoint metadata, or API responses, the scripts output `unknown` so upstream agents can parse the result safely.
 
 ## Updating Capabilities
 

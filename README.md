@@ -105,20 +105,33 @@ runninghub/
 
 | 模式 | 命令 | 用途 |
 |------|------|------|
-| **检查** | `--check` | 验证 API Key + 查询余额 |
+| **检查** | `--check` | 验证 API Key + 查询余额/coins/API 类型 |
 | **列表** | `--list [--type T] [--task T]` | 浏览可用端点 |
 | **详情** | `--info ENDPOINT` | 查看端点参数 |
-| **执行** | `--endpoint EP --prompt "..." -o /tmp/out` | 使用指定端点执行 |
-| **自动** | `--task TASK --prompt "..." -o /tmp/out` | 自动选择最佳端点 |
+| **执行** | `--endpoint EP --prompt "..." -o /tmp/out` | 使用指定端点执行，并输出前后账务变化 |
+| **自动** | `--task TASK --prompt "..." -o /tmp/out` | 自动选择最佳端点，并输出前后账务变化 |
 
 ### AI 应用（runninghub_app.py）
 
 | 模式 | 命令 | 用途 |
 |------|------|------|
-| **检查** | `--check` | 验证 API Key + 查询余额 |
+| **检查** | `--check` | 验证 API Key + 查询余额/coins/API 类型 |
 | **浏览** | `--list [--sort S] [--size N] [--page N]` | 浏览推荐/最热/最新 AI 应用 |
 | **节点** | `--info WEBAPP_ID` | 查看 AI 应用的可修改节点 |
-| **执行** | `--run WEBAPP_ID --node ... --file ... -o /tmp/out` | 运行 AI 应用 |
+| **执行** | `--run WEBAPP_ID --node ... --file ... -o /tmp/out` | 运行 AI 应用，并输出前后账务变化 |
+
+## 账务 / Billing 输出
+
+执行标准模型或 AI 应用时，脚本现在会在保留原有 `OUTPUT_FILE:` / `COST:` / `DURATION:` 输出的同时，额外输出结构化账务字段：
+
+- `BILLING_MODE:`
+- `BALANCE_BEFORE:` / `BALANCE_AFTER:` / `BALANCE_DELTA:`
+- `COINS_BEFORE:` / `COINS_AFTER:` / `COINS_DELTA:`
+- `RUNNING_TASKS_BEFORE:` / `RUNNING_TASKS_AFTER:`
+- `API_TYPE_BEFORE:` / `API_TYPE_AFTER:`
+- `PREFLIGHT_BILLING_MODE:`
+
+若无法从账号状态、端点元数据或 API 回应推断计费模式，字段会输出 `unknown`，方便上层 agent 做稳定解析。
 
 ## 更新能力目录
 
