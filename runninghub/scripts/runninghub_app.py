@@ -27,7 +27,8 @@ API_HOST = "https://www.runninghub.ai"
 APP_LIST_PATH = "/openapi/v2/aiapp/list"
 NODE_INFO_PATH = "/api/webapp/apiCallDemo"
 UPLOAD_PATH = "/task/openapi/upload"
-SUBMIT_PATH = "/task/openapi/ai-app/run"
+SUBMIT_V2_PATH_TEMPLATE = "/openapi/v2/run/ai-app/{webapp_id}"
+SUBMIT_LEGACY_PATH = "/task/openapi/ai-app/run"
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 
@@ -200,39 +201,18 @@ def upload_file(api_key: str, file_path: str) -> str:
     return file_name
 
 
-def submit_task(api_key: str, webapp_id: str, node_info_list: list[dict],
-                instance_type: str = "default") -> dict:
-    url = f"{API_HOST}{SUBMIT_PATH}"
-    payload = {
-        "apiKey": api_key,
-        "webappId": int(webapp_id),
-        "nodeInfoList": node_info_list,
-    }
-    if instance_type and instance_type != "default":
-        payload["instanceType"] = instance_type
-
-    print(f"Submitting AI app task (webapp {webapp_id})...", file=sys.stderr)
-    result = curl_post_json(url, payload)
-    resp = _parse_response(result, "Submit task")
+def _normalize_submit_response(resp: dict) -> tuple[dict, str | None, str | None]:
+    if "taskId" in resp or "status" in resp or "errorCode" in resp:
+        task_id = resp.get("taskId")
+        error_code = str(resp.get("errorCode") or "")
+        error_message = resp.get("errorMessage") or resp.get("msg") or ""
+        return resp, task_id, (f"[{error_code}] {error_message}" if error_code or error_message else None)
 
     if resp.get("code") != 0:
-        print(json.dumps({
-            "error": "SUBMIT_FAILED",
-            "message": f"Submit failed: {resp.get('msg', resp)}",
-            "detail": resp,
-        }, ensure_ascii=False), file=sys.stderr)
-        sys.exit(1)
+        return {}, None, str(resp.get("msg") or resp)
 
-    data = resp.get("data", {})
+    data = resp.get("data", {}) or {}
     task_id = data.get("taskId")
-    if not task_id:
-        print(json.dumps({
-            "error": "SUBMIT_FAILED",
-            "message": "No taskId in response",
-            "detail": resp,
-        }, ensure_ascii=False), file=sys.stderr)
-        sys.exit(1)
-
     prompt_tips_str = data.get("promptTips")
     if prompt_tips_str:
         try:
@@ -247,8 +227,63 @@ def submit_task(api_key: str, webapp_id: str, node_info_list: list[dict],
                 sys.exit(1)
         except (json.JSONDecodeError, TypeError):
             pass
+    return data, task_id, None
 
-    return data
+
+def submit_task(api_key: str, webapp_id: str, node_info_list: list[dict],
+                instance_type: str = "default", use_personal_queue: bool = False) -> dict:
+    v2_url = f"{API_HOST}{SUBMIT_V2_PATH_TEMPLATE.format(webapp_id=webapp_id)}"
+    v2_payload = {
+        "nodeInfoList": node_info_list,
+        "instanceType": instance_type or "default",
+        "usePersonalQueue": "true" if use_personal_queue else "false",
+    }
+
+    print(f"Submitting AI app task (webapp {webapp_id}) via v2 endpoint...", file=sys.stderr)
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+        json.dump(v2_payload, f, ensure_ascii=False)
+        tmp_path = f.name
+    try:
+        cmd = [
+            "curl", "-s", "-S", "--fail-with-body", "-X", "POST", v2_url,
+            "--max-time", "60",
+            "-H", "Content-Type: application/json",
+            "-H", f"Authorization: Bearer {api_key}",
+            "-d", f"@{tmp_path}",
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+    finally:
+        os.unlink(tmp_path)
+
+    resp = _parse_response(result, "Submit task (v2)")
+    data, task_id, error = _normalize_submit_response(resp)
+    if task_id:
+        return data
+
+    legacy_payload = {
+        "apiKey": api_key,
+        "webappId": int(webapp_id),
+        "nodeInfoList": node_info_list,
+        "instanceType": instance_type or "default",
+        "usePersonalQueue": "true" if use_personal_queue else "false",
+    }
+    legacy_url = f"{API_HOST}{SUBMIT_LEGACY_PATH}"
+    print(
+        f"v2 submit unavailable ({error or 'unknown error'}), retrying legacy endpoint...",
+        file=sys.stderr,
+    )
+    legacy_result = curl_post_json(legacy_url, legacy_payload)
+    legacy_resp = _parse_response(legacy_result, "Submit task (legacy)")
+    legacy_data, legacy_task_id, legacy_error = _normalize_submit_response(legacy_resp)
+    if legacy_task_id:
+        return legacy_data
+
+    print(json.dumps({
+        "error": "SUBMIT_FAILED",
+        "message": f"Submit failed: {legacy_error or error or legacy_resp}",
+        "detail": {"v2": resp, "legacy": legacy_resp},
+    }, ensure_ascii=False), file=sys.stderr)
+    sys.exit(1)
 
 
 # ---------------------------------------------------------------------------

@@ -155,6 +155,12 @@ Flags: `--node nodeId:fieldName=value`, `--file nodeId:fieldName=/path`, `--inst
 Browse: `--list [--sort RECOMMEND|HOTTEST|NEWEST] [--size N] [--page N] [--days N]`
 Discovery: `--info WEBAPP_ID`
 
+Implementation note:
+- Script now prefers the public v2 route shown in app `invokeExample`: `POST /openapi/v2/run/ai-app/{webappId}` with `Authorization: Bearer ...`
+- Payload should include `nodeInfoList`, `instanceType`, and `usePersonalQueue` (`"false"` by default)
+- If v2 is temporarily unavailable, the script falls back to legacy `/task/openapi/ai-app/run`
+- Uploaded media must use the exact `fileName` returned by `/task/openapi/upload` (often like `api/<sha>.png`)
+
 ## AI App Errors
 
 | Error | Action |
