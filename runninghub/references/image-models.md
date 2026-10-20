@@ -4,13 +4,13 @@
 
 > 好的！先帮你选个图片模型～
 >
-> 1. 🎨 **全能图片PRO** — 香蕉Pro同款，默认推荐，综合效果最好
-> 2. ⚡ **全能图片V2** — 香蕉2同款，最快最便宜
-> 3. 🎭 **悠船 v7** — Midjourney 风格，欧美大片质感
-> 4. 🌸 **悠船 niji7** — 二次元/动漫风格，插画感满满
-> 5. 📷 **Seedream v5** — 字节跳动出品，写实照片感超强
+> 1. 🎨 **Nano Banana Pro** — 默认推荐，综合效果最好
+> 2. ⚡ **Nano Banana 2** — 最快最便宜
+> 3. 🎭 **Midjourney v8** — 欧美大片质感
+> 4. 🤖 **GPT Image 2** — GPT image2 同款，语义理解强，改图也很稳
+> 5. 📷 **Seedream v5 Pro** — 字节跳动出品，写实照片感超强
 >
-> 说个数字就行～ 不选的话我默认用 🎨全能图片PRO 哦！
+> 说个数字就行～ 不选的话我默认用 🎨Nano Banana Pro 哦！
 
 **Do NOT invent your own model list. Do NOT skip this menu. Use EXACTLY this 5-model list.**
 
@@ -21,29 +21,31 @@ After user replies, map choice → endpoint:
 |---|----------|
 | 1 (default) | `rhart-image-n-pro/text-to-image` |
 | 2 | `rhart-image-n-g31-flash/text-to-image` |
-| 3 | `youchuan/text-to-image-v7` |
-| 4 | `youchuan/text-to-image-niji7` |
-| 5 | `seedream-v5-lite/text-to-image` |
+| 3 | `youchuan/text-to-image-v82` |
+| 4 | `rhart-image-g-2/text-to-image` |
+| 5 | `seedream-v5-pro/text-to-image` |
 
 **Image-to-image / Image edit** (user has source image):
 | # | Endpoint |
 |---|----------|
 | 1 (default) | `rhart-image-n-pro/edit` |
 | 2 | `rhart-image-n-g31-flash/image-to-image` |
-| 3 | `rhart-image-n-pro/edit` ⚠️ 悠船无图生图，回退到全能PRO |
-| 4 | `rhart-image-n-pro/edit` ⚠️ 悠船无图生图，回退到全能PRO |
-| 5 | `seedream-v5-lite/image-to-image` |
+| 3 | `rhart-image-n-pro/edit` ⚠️ Midjourney 无图生图，回退到 Nano Banana Pro |
+| 4 | `rhart-image-g-2/image-to-image` |
+| 5 | `seedream-v5-pro/image-to-image` |
 
-When user picks 悠船 (3 or 4) for image-to-image, tell them warmly:
-> "悠船模型暂时不支持图生图，我帮你用全能图片PRO来处理哈～ 效果也很棒的！"
+When user picks Midjourney (3) for image-to-image, tell them warmly:
+> "Midjourney 暂时不支持图生图，我帮你用 Nano Banana Pro 来处理哈～ 效果也很棒的！"
 
 ## Matching Rules
 
 - Number 1-5 → use that model
-- Partial name ("全能", "PRO", "V2") → match to #1 or #2
-- "悠船" / "Midjourney" / "MJ" → #3
-- "niji" / "二次元" / "动漫" → #4
-- "Seedream" / "种子" / "写实" / "照片" → #5
+- Partial name ("全能", "PRO", "Banana", "香蕉") → match to #1 or #2
+- "Nano Banana Pro" / "香蕉Pro" / "Banana Pro" → #1
+- "Nano Banana 2" / "香蕉2" / "Banana 2" / "V2" → #2
+- "悠船" / "Youchuan" / "Midjourney" / "MJ" / "v8" → #3
+- "GPT Image" / "GPT image2" / "GPT Image 2" / "G-2" → #4
+- "Seedream" / "种子" / "写实" / "照片" / "v5 Pro" → #5
 - "随便" / "你选" / "默认" → #1
 - "最快的" / "便宜的" → #2
 - "效果最好的" → #1
@@ -53,7 +55,7 @@ Skip menu ONLY if: user named a specific model, or said "跟上次一样" / "再
 ## After Model Is Chosen
 
 Confirm the choice warmly, then ask for missing info if needed:
-> "好嘞，用全能图片PRO！有什么画面要求吗？比如风格、尺寸、画质～"
+> "好嘞，用 Nano Banana Pro！有什么画面要求吗？比如风格、尺寸、画质～"
 
 Smart defaults (use these if user doesn't specify):
 - Resolution: 2k

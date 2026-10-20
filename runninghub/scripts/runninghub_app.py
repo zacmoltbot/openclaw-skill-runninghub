@@ -410,6 +410,7 @@ def cmd_run(args):
         before_status.get("api_type"),
     )
 
+    print(f"PREFLIGHT_BILLING_MODE:{preflight_mode}", flush=True)
     data = submit_task(api_key, webapp_id, node_list, args.instance_type or "default")
     task_id = str(data["taskId"])
     final = poll_task(api_key, task_id)

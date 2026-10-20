@@ -148,16 +148,26 @@ def extract_task(endpoint: str, output_type: str) -> str:
     suffix = parts[-1] if len(parts) > 1 else endpoint
 
     # Normalize common patterns
-    if "upscale" in suffix or "upscale" in endpoint:
+    if "upscale" in suffix or "upscale" in endpoint or "gigapixel" in endpoint:
         if output_type == "video":
             return "video-upscale"
         return "image-upscale"
+    if "video-frame-interpolation" in endpoint:
+        return "video-frame-interpolation"
+    if "video-denoise" in endpoint:
+        return "video-denoise"
+    if "video-proteus" in endpoint or "video-starlight" in endpoint or "video-astra" in endpoint:
+        return "video-upscale"
     if suffix in ("edit", "edit-ultra"):
         return "image-to-image"
     if "image-edit" in suffix:
         return "image-to-image"
     if "image-to-image" in suffix:
         return "image-to-image"
+    if "layer-decomposition" in suffix:
+        return "image-layer-decomposition"
+    if "context-ir" in suffix:
+        return "prompt-enhance"
     if "text-to-image" in suffix:
         return "text-to-image"
     if "text-to-video" in suffix or "t2v" in suffix:
@@ -168,12 +178,44 @@ def extract_task(endpoint: str, output_type: str) -> str:
         return "start-end-to-video"
     if "reference-to-video" in suffix or "refrence-to-video" in suffix:
         return "reference-to-video"
+    if "omni-reference" in suffix:
+        return "reference-to-video"
+    if "multimodal-video" in suffix or "multimodal-to-video" in suffix:
+        return "multimodal-video"
+    if "image-audio-to-video" in suffix or "lip-sync-video" in suffix:
+        return "lip-sync-video"
+    if "draft-enhance" in suffix:
+        return "video-draft-enhance"
+    if "video-to-video" in suffix or "video-restyling" in suffix:
+        return "video-edit"
+    if "transition" in suffix:
+        return "video-transition"
+    if "effects" in suffix:
+        return "video-effects"
+    if "fps-increaser" in suffix:
+        return "video-fps-increase"
+    if "subtitle-erase" in endpoint:
+        return "video-subtitle-erase"
     if "video-extend" in suffix:
         return "video-extend"
+    if "video-extension" in suffix:
+        return "video-extend"
+    if suffix == "extend":
+        return "video-extend"
+    if "video-translate" in suffix:
+        return "video-translate"
     if "edit-video" in suffix or "video-edit" in suffix:
         return "video-edit"
     if "motion-control" in suffix:
         return "motion-control"
+    if "text-to-world" in suffix:
+        return "text-to-world"
+    if "multi-image-to-world" in suffix:
+        return "multi-image-to-world"
+    if "image-to-world" in suffix:
+        return "image-to-world"
+    if "video-to-world" in suffix:
+        return "video-to-world"
     if "text-to-3d" in suffix:
         return "text-to-3d"
     if "multi-image-to-3d" in suffix:
@@ -186,12 +228,24 @@ def extract_task(endpoint: str, output_type: str) -> str:
         return "image-to-text"
     if "video-to-text" in suffix:
         return "video-to-text"
-    if "speech" in suffix or "speech" in endpoint:
+    if "speech" in suffix or "speech" in endpoint or "tts" in suffix:
         return "text-to-speech"
-    if "music" in suffix:
+    if "doubao-seed-audio" in endpoint:
+        return "audio-generation"
+    if "music" in suffix or "suno" in endpoint or "generate-song" in suffix or "generate-bgm" in suffix:
         return "music-generation"
-    if "voice-clone" in suffix:
+    if "instrumental" in suffix:
+        return "music-generation"
+    if "lyrics" in suffix:
+        return "lyrics-generation"
+    if "extend-song" in suffix:
+        return "song-extend"
+    if "vocal-clone" in suffix or "voice-clone" in suffix:
         return "voice-clone"
+    if "voice-design" in suffix:
+        return "voice-design"
+    if "short-play" in endpoint:
+        return "short-play-video"
     if "upload-character" in suffix:
         return "upload-character"
 
@@ -233,6 +287,20 @@ def extract_tags(endpoint: str, name_cn: str, output_type: str, task: str) -> li
     return tags
 
 
+def _sanitize_default(value):
+    """Drop auth cookies and strip signed-URL query strings from param defaults."""
+    if value is None or value == "":
+        return None
+    if not isinstance(value, str):
+        return value
+    if "Rh-Comfy-Auth=" in value or "Rh-Identify=" in value:
+        return None
+    # Pre-signed COS/S3 URLs embed access-key IDs that GitHub push protection rejects.
+    if any(token in value for token in ("q-ak=", "q-signature=", "X-Amz-Signature=", "X-Amz-Credential=")):
+        return value.split("?", 1)[0]
+    return value
+
+
 def simplify_param(param: dict) -> dict:
     """Extract essential param info for capabilities.json."""
     p = {
@@ -242,12 +310,9 @@ def simplify_param(param: dict) -> dict:
     }
     if param.get("options"):
         p["options"] = [opt["value"] for opt in param["options"]]
-    default_val = param.get("defaultValue")
+    default_val = _sanitize_default(param.get("defaultValue"))
     if default_val is not None and default_val != "":
-        if isinstance(default_val, str) and ("Rh-Comfy-Auth=" in default_val or "Rh-Identify=" in default_val):
-            pass
-        else:
-            p["default"] = default_val
+        p["default"] = default_val
     if param.get("multipleInputs"):
         p["multiple"] = True
         if param.get("maxInputNum"):

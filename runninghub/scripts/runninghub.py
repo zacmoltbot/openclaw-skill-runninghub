@@ -2,7 +2,7 @@
 """
 RunningHub universal API client for OpenClaw.
 
-Supports all 209 RunningHub endpoints: image, video, audio, 3D, text understanding.
+Supports the 420-entry RunningHub capability catalog: image, video, audio, 3D, text understanding.
 Uses only Python stdlib and curl.
 
 Modes:
@@ -34,7 +34,7 @@ ACCOUNT_STATUS_URL = "https://www.runninghub.ai/uc/openapi/accountStatus"
 POLL_ENDPOINT = "/query"
 UPLOAD_ENDPOINT = "/media/upload/binary"
 
-MAX_POLL_SECONDS = 1200
+MAX_POLL_SECONDS = int(os.environ.get("RUNNINGHUB_MAX_POLL_SECONDS", "1200"))
 POLL_INTERVAL = 5
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -829,6 +829,7 @@ def cmd_execute(args):
 
     before_status = fetch_account_status(api_key)
     preflight_mode = infer_billing_mode(endpoint_def, before_status.get("api_type"))
+    print(f"PREFLIGHT_BILLING_MODE:{preflight_mode}", flush=True)
     payload = build_payload(endpoint_def, args)
     submit_url = f"{BASE_URL}/{endpoint_def['endpoint']}"
 

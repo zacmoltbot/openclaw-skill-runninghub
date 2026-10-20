@@ -1,39 +1,41 @@
-# RHClaw — RunningHub Skill for OpenClaw
+# RHClaw — RunningHub Skill for OpenClaw / DeepSeek Harness
 
-
-> [!NOTE]
-> **International Version** — This fork of [HM-RunningHub/OpenClaw_RH_Skills](https://github.com/HM-RunningHub/OpenClaw_RH_Skills) routes all API calls to the global **[RunningHub.ai](https://www.runninghub.ai)** platform instead of runninghub.cn.
+> **International community fork, not a RunningHub company release.** Adapted from [official upstream](https://github.com/HM-RunningHub/OpenClaw_RH_Skills), synchronized on 2026-10-20 to `21ade9836e1e68bdb45fac9956b919f50901b8d4` (2026-08-18). All API requests stay on **runninghub.ai**. Preserves balance/coins reporting, validated video download retries and v2 AI-app submission. The 420-entry catalog describes upstream capabilities; international account/region availability must be verified per model, not assumed.
 
 [中文](./README.md)
 
-An [OpenClaw](https://github.com/openclaw/openclaw) skill that brings multimedia generation capabilities — including image, video, audio, 3D, and text — to conversational AI, powered by 209 [RunningHub](https://www.runninghub.ai) API endpoints. Built with zero external dependencies (pure Python 3 + curl), it lets users create rich media content through natural language, with support for both standard model APIs and custom ComfyUI workflows (AI Applications).
+> ## Now supports [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)
+>
+> Same standard `SKILL.md` as [OpenClaw](https://github.com/openclaw/openclaw). Install and update the same way.
+
+An OpenClaw and DeepSeek Harness skill that brings multimedia generation capabilities — including image, video, audio, 3D, and text — to conversational AI, powered by 420 [RunningHub](https://www.runninghub.ai) API endpoints. Built with no pip dependencies (Python 3 + curl + ffprobe), it lets users create rich media content through natural language, with support for both standard model APIs and custom ComfyUI workflows (AI Applications).
 
 ## Capabilities
 
 | Category | Endpoints | Tasks |
 |----------|-----------|-------|
-| **Image** | 47 | text-to-image, image-to-image, image upscale, Midjourney-style |
-| **Video** | 126 | text-to-video, image-to-video, start-end frames, video extend/edit, motion control, multimodal video |
-| **Audio** | 8 | text-to-speech, music generation, voice clone |
-| **3D** | 12 | text-to-3D, image-to-3D, multi-image-to-3D |
-| **Text** | 16 | image-to-text, video-to-text, text-to-text |
+| **Image** | 102 | text-to-image, image-to-image, image upscale, Midjourney-style |
+| **Video** | 230 | text-to-video, image-to-video, start-end frames, video extend/edit, motion control, multimodal video |
+| **Audio** | 20 | text-to-speech, music generation, voice clone |
+| **3D** | 16 | text-to-3D, image-to-3D, multi-image-to-3D |
+| **Text** | 52 | image-to-text, video-to-text, text-to-text |
 | **AI Apps** | Unlimited | Run any RunningHub AI Application (custom ComfyUI workflow) |
 
 ## Quick Start
 
 ### Install
 
-In your OpenClaw chat, say:
+In your OpenClaw or DeepSeek Harness chat, say:
 
-> Install the RunningHub skill from https://github.com/HM-RunningHub/OpenClaw_RH_Skills
+> Install the RunningHub skill from https://github.com/zacmoltbot/openclaw-skill-runninghub
 
 The assistant will clone the repo, copy files to the workspace, and guide you through API key setup.
 
 ### Update
 
-When a new version is available, say in your OpenClaw chat:
+When a new version is available, say in your OpenClaw or DeepSeek Harness chat:
 
-> Update from https://github.com/HM-RunningHub/OpenClaw_RH_Skills and re-read @runninghub/SKILL.md
+> Update from https://github.com/zacmoltbot/openclaw-skill-runninghub and re-read @runninghub/SKILL.md
 
 The assistant will pull the latest code and reload the skill config. No need to re-enter your API key.
 
@@ -59,38 +61,37 @@ The assistant automatically selects the best RunningHub endpoint based on your r
 
 ### Video Model Selection
 
-When generating video, the assistant presents 8 curated models to choose from:
+When generating video, the assistant presents 7 curated models to choose from:
 
 > 1. 🚀 **Google Veo 3.1 Fast** — Fast with great quality, best value
 > 2. 🔥 **Grok Video** — Grok-powered, incredible imagination
 > 3. 🎯 **Kling v3.0 Pro** — Natural motion, best for people
 > 4. 🎬 **Google Veo 3.1 Pro** — Cinematic quality
 > 5. ✨ **Vidu Q3 Pro** — Unique stylized look
-> 6. ⭐ **Sora** — Sora-class engine
-> 7. 🌊 **MiniMax Hailuo** — Fast with fine details
-> 8. 🌱 **超能视频SD2.0** — Top quality, up to 15s + auto audio, not for real people
+> 6. 🌊 **MiniMax H3** — Up to 2K and 15s, fine details
+> 7. 🌱 **Seedance 2.5** — Top quality, up to 30s + auto audio + real people, up to 4K
 
-Pick a number to start, or the default (Google Veo 3.1 Fast) is used automatically.
+Pick a number to start, or the default (Google Veo 3.1 Fast) is used automatically. All models are discounted, typically 20–70% off.
 
 ### Image Model Selection
 
 When generating images, the assistant presents 5 curated models to choose from:
 
-> 1. 🎨 **RH Image PRO** — Best overall quality, recommended default
-> 2. ⚡ **RH Image V2** — Fastest and most affordable
-> 3. 🎭 **Youchuan v7** — Midjourney-style, cinematic look
-> 4. 🌸 **Youchuan niji7** — Anime / illustration style
-> 5. 📷 **Seedream v5** — ByteDance, strong photorealistic feel
+> 1. 🎨 **Nano Banana Pro** — Best overall quality, recommended default
+> 2. ⚡ **Nano Banana 2** — Fastest and most affordable
+> 3. 🎭 **Midjourney v8** — Cinematic look
+> 4. 🤖 **GPT Image 2** — Strong prompt understanding and reliable image editing
+> 5. 📷 **Seedream v5 Pro** — ByteDance, strong photorealistic feel
 
-Pick a number to start, or the default (RH Image PRO) is used automatically.
+Pick a number to start, or the default (Nano Banana Pro) is used automatically. All models are discounted, typically 20–70% off.
 
 ## Architecture
 
 ```
 runninghub/
-├── SKILL.md                        # OpenClaw skill definition (routing table + examples)
+├── SKILL.md                        # Skill definition for OpenClaw / DeepSeek Harness (routing table + examples)
 ├── scripts/
-│   ├── runninghub.py               # Standard model API client (209 endpoints)
+│   ├── runninghub.py               # Standard model API client (420 endpoints)
 │   ├── runninghub_app.py           # AI Application client (custom ComfyUI workflows)
 │   └── build_capabilities.py       # Generates capabilities.json from models_registry.json
 └── data/
@@ -103,33 +104,20 @@ runninghub/
 
 | Mode | Command | Purpose |
 |------|---------|---------|
-| **Check** | `--check` | Verify API key + inspect balance / coins / API type |
+| **Check** | `--check` | Verify API key + check wallet balance |
 | **List** | `--list [--type T] [--task T]` | Browse available endpoints |
 | **Info** | `--info ENDPOINT` | View endpoint parameters |
-| **Execute** | `--endpoint EP --prompt "..." -o /tmp/out` | Run with a specific endpoint and emit billing deltas |
-| **Auto** | `--task TASK --prompt "..." -o /tmp/out` | Auto-select the best endpoint and emit billing deltas |
+| **Execute** | `--endpoint EP --prompt "..." -o /tmp/out` | Run with specific endpoint |
+| **Auto** | `--task TASK --prompt "..." -o /tmp/out` | Auto-select best endpoint |
 
 ### AI Application (runninghub_app.py)
 
 | Mode | Command | Purpose |
 |------|---------|---------|
-| **Check** | `--check` | Verify API key + inspect balance / coins / API type |
+| **Check** | `--check` | Verify API key + check wallet balance |
 | **Browse** | `--list [--sort S] [--size N] [--page N]` | Browse recommended/hottest/newest AI apps |
 | **Nodes** | `--info WEBAPP_ID` | Show modifiable nodes for an AI app |
-| **Execute** | `--run WEBAPP_ID --node ... --file ... -o /tmp/out` | Run an AI application and emit billing deltas |
-
-## Billing / account reporting
-
-When executing either the standard-model client or the AI-app client, the scripts now keep the existing `OUTPUT_FILE:` / `COST:` / `DURATION:` lines and additionally emit structured billing fields:
-
-- `BILLING_MODE:`
-- `BALANCE_BEFORE:` / `BALANCE_AFTER:` / `BALANCE_DELTA:`
-- `COINS_BEFORE:` / `COINS_AFTER:` / `COINS_DELTA:`
-- `RUNNING_TASKS_BEFORE:` / `RUNNING_TASKS_AFTER:`
-- `API_TYPE_BEFORE:` / `API_TYPE_AFTER:`
-- `PREFLIGHT_BILLING_MODE:`
-
-If the billing mode cannot be inferred from account status, endpoint metadata, or API responses, the scripts output `unknown` so upstream agents can parse the result safely.
+| **Execute** | `--run WEBAPP_ID --node ... --file ... -o /tmp/out` | Run an AI application |
 
 ## Updating Capabilities
 

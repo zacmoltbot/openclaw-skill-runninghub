@@ -1,41 +1,43 @@
-# RHClaw — RunningHub Skill for OpenClaw
+# RHClaw — RunningHub Skill for OpenClaw / DeepSeek Harness
 
-
-> [!NOTE]
-> **International Version** — This is a fork of [HM-RunningHub/OpenClaw_RH_Skills](https://github.com/HM-RunningHub/OpenClaw_RH_Skills) adapted for the **global [RunningHub.ai](https://www.runninghub.ai)** platform (instead of runninghub.cn). All API calls route to runninghub.ai.
+> **International community fork, not a RunningHub company release.** Adapted from [official upstream](https://github.com/HM-RunningHub/OpenClaw_RH_Skills), synchronized on 2026-10-20 to `21ade9836e1e68bdb45fac9956b919f50901b8d4` (2026-08-18). All API requests stay on **runninghub.ai**. Preserves balance/coins reporting, validated video download retries and v2 AI-app submission. The 420-entry catalog describes upstream capabilities; international account/region availability must be verified per model, not assumed.
 
 [English](./README_en.md)
 
-为 [OpenClaw](https://github.com/openclaw/openclaw) 打造的通用多媒体生成技能，由 [RunningHub](https://www.runninghub.ai) API 驱动。
+> ## 现已支持 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)
+>
+> 与 [OpenClaw](https://github.com/openclaw/openclaw) 共用同一套标准 `SKILL.md`，安装和更新方式相同。
 
-**209 个标准 API 端点 + 无限 AI 应用**，覆盖图片、视频、音频、3D 模型生成、多模态文本理解，以及任意用户创建的 AI 应用（ComfyUI 工作流）。
+为 OpenClaw 和 DeepSeek Harness 打造的通用多媒体生成技能，由 [RunningHub](https://www.runninghub.ai) API 驱动。
+
+**420 个标准 API 端点 + 无限 AI 应用**，覆盖图片、视频、音频、3D 模型生成、多模态文本理解，以及任意用户创建的 AI 应用（ComfyUI 工作流）。
 
 ## 能力一览
 
 | 类别 | 端点数 | 支持任务 |
 |------|--------|----------|
-| **图片** | 47 | 文生图、图生图、图片放大、Midjourney 风格 |
-| **视频** | 126 | 文生视频、图生视频、首尾帧生成、视频续写/编辑、运动控制、多模态视频 |
-| **音频** | 8 | 文字转语音、音乐生成、声音克隆 |
-| **3D** | 12 | 文字转 3D、图片转 3D、多图转 3D |
-| **文本** | 16 | 图片理解、视频理解、文本处理 |
+| **图片** | 102 | 文生图、图生图、图片放大、Midjourney 风格 |
+| **视频** | 230 | 文生视频、图生视频、首尾帧生成、视频续写/编辑、运动控制、多模态视频 |
+| **音频** | 20 | 文字转语音、音乐生成、声音克隆 |
+| **3D** | 16 | 文字转 3D、图片转 3D、多图转 3D |
+| **文本** | 52 | 图片理解、视频理解、文本处理 |
 | **AI 应用** | 无限 | 运行任意 RunningHub AI 应用（自定义 ComfyUI 工作流） |
 
 ## 快速开始
 
 ### 安装
 
-在 OpenClaw 对话中发送：
+在 OpenClaw 或 DeepSeek Harness 对话中发送：
 
-> 从 https://github.com/HM-RunningHub/OpenClaw_RH_Skills 安装 RunningHub 技能
+> 从 https://github.com/zacmoltbot/openclaw-skill-runninghub 安装 RunningHub 技能
 
 助手会自动克隆仓库、复制文件到工作区，并引导你完成 API Key 配置。
 
 ### 更新
 
-当技能有新版本时，在 OpenClaw 对话中发送：
+当技能有新版本时，在 OpenClaw 或 DeepSeek Harness 对话中发送：
 
-> 从 https://github.com/HM-RunningHub/OpenClaw_RH_Skills 更新 并重新读取@runninghub/SKILL.md
+> 从 https://github.com/zacmoltbot/openclaw-skill-runninghub 更新 并重新读取@runninghub/SKILL.md
 
 助手会拉取最新代码并重新加载技能配置，无需重新输入 API Key。
 
@@ -61,38 +63,37 @@
 
 ### 视频生成交互
 
-生成视频时，助手会展示 8 个精选模型让你选择：
+生成视频时，助手会展示 7 个精选模型让你选择：
 
 > 1. 🚀 **Google Veo 3.1 Fast** — 又快效果又好，性价比之王
 > 2. 🔥 **Grok Video** — Grok 驱动，画面想象力超强
 > 3. 🎯 **Kling v3.0 Pro** — 运动自然，拍人物首选
 > 4. 🎬 **Google Veo 3.1 Pro** — 电影感拉满
 > 5. ✨ **Vidu Q3 Pro** — 风格化独特
-> 6. ⭐ **Sora** — Sora 同款引擎
-> 7. 🌊 **MiniMax Hailuo** — 速度快画面细腻
-> 8. 🌱 **超能视频SD2.0** — 效果超赞，最长15秒+自动配音，不适合真人
+> 6. 🌊 **MiniMax H3** — 最高2K、最长15秒，画面细腻
+> 7. 🌱 **Seedance 2.5** — 效果超赞，最长30秒+自动配音+支持真人，最高4K
 
-选个数字就能开始生成，不选默认用 Google Veo 3.1 Fast。
+选个数字就能开始生成，不选默认用 Google Veo 3.1 Fast。所有模型均有折扣，大约 2–7 折。
 
 ### 图片生成交互
 
 生成图片时，助手会展示 5 个精选模型让你选择：
 
-> 1. 🎨 **全能图片PRO** — 香蕉Pro同款，默认推荐，综合效果最好
-> 2. ⚡ **全能图片V2** — 香蕉2同款，最快最便宜
-> 3. 🎭 **悠船 v7** — Midjourney 风格，欧美大片质感
-> 4. 🌸 **悠船 niji7** — 二次元/动漫风格，插画感满满
-> 5. 📷 **Seedream v5** — 字节跳动出品，写实照片感超强
+> 1. 🎨 **Nano Banana Pro** — 默认推荐，综合效果最好
+> 2. ⚡ **Nano Banana 2** — 最快最便宜
+> 3. 🎭 **Midjourney v8** — 欧美大片质感
+> 4. 🤖 **GPT Image 2** — GPT image2 同款，语义理解强，改图也很稳
+> 5. 📷 **Seedream v5 Pro** — 字节跳动出品，写实照片感超强
 
-选个数字就能开始生成，不选默认用全能图片PRO。
+选个数字就能开始生成，不选默认用 Nano Banana Pro。所有模型均有折扣，大约 2–7 折。
 
 ## 项目结构
 
 ```
 runninghub/
-├── SKILL.md                        # OpenClaw 技能定义（路由表 + 示例 + 交互规则）
+├── SKILL.md                        # 技能定义（OpenClaw / DeepSeek Harness，路由表 + 示例 + 交互规则）
 ├── scripts/
-│   ├── runninghub.py               # 标准模型 API 客户端（209 端点）
+│   ├── runninghub.py               # 标准模型 API 客户端（420 端点）
 │   ├── runninghub_app.py           # AI 应用客户端（自定义 ComfyUI 工作流）
 │   └── build_capabilities.py       # 从 models_registry.json 生成 capabilities.json
 └── data/
@@ -105,35 +106,20 @@ runninghub/
 
 | 模式 | 命令 | 用途 |
 |------|------|------|
-| **检查** | `--check` | 验证 API Key + 查询余额/coins/API 类型 |
+| **检查** | `--check` | 验证 API Key + 查询余额 |
 | **列表** | `--list [--type T] [--task T]` | 浏览可用端点 |
 | **详情** | `--info ENDPOINT` | 查看端点参数 |
-| **执行** | `--endpoint EP --prompt "..." -o /tmp/out` | 使用指定端点执行，并输出前后账务变化 |
-| **自动** | `--task TASK --prompt "..." -o /tmp/out` | 自动选择最佳端点，并输出前后账务变化 |
+| **执行** | `--endpoint EP --prompt "..." -o /tmp/out` | 使用指定端点执行 |
+| **自动** | `--task TASK --prompt "..." -o /tmp/out` | 自动选择最佳端点 |
 
 ### AI 应用（runninghub_app.py）
 
 | 模式 | 命令 | 用途 |
 |------|------|------|
-| **检查** | `--check` | 验证 API Key + 查询余额/coins/API 类型 |
+| **检查** | `--check` | 验证 API Key + 查询余额 |
 | **浏览** | `--list [--sort S] [--size N] [--page N]` | 浏览推荐/最热/最新 AI 应用 |
 | **节点** | `--info WEBAPP_ID` | 查看 AI 应用的可修改节点 |
-| **执行** | `--run WEBAPP_ID --node ... --file ... -o /tmp/out` | 运行 AI 应用，并输出前后账务变化 |
-
-## 账务 / Billing 输出
-
-执行标准模型或 AI 应用时，脚本现在会在保留原有 `OUTPUT_FILE:` / `COST:` / `DURATION:` 输出的同时，额外输出结构化账务字段：
-
-视频输出现在会在下载后自动做 `ffprobe` 校验（至少要求读到 `duration` 与 stream info）。若首次下载拿到坏档（例如 `moov atom not found` / `Invalid data found when processing input`），脚本会自动删除坏档并重试下载，最多额外重试 2 次；若仍失败，会以错误结束，并输出可读的失败 JSON，内含原始 `download_url` 供上层 fallback / 人工处理。非视频输出维持原本下载流程。
-
-- `BILLING_MODE:`
-- `BALANCE_BEFORE:` / `BALANCE_AFTER:` / `BALANCE_DELTA:`
-- `COINS_BEFORE:` / `COINS_AFTER:` / `COINS_DELTA:`
-- `RUNNING_TASKS_BEFORE:` / `RUNNING_TASKS_AFTER:`
-- `API_TYPE_BEFORE:` / `API_TYPE_AFTER:`
-- `PREFLIGHT_BILLING_MODE:`
-
-若无法从账号状态、端点元数据或 API 回应推断计费模式，字段会输出 `unknown`，方便上层 agent 做稳定解析。
+| **执行** | `--run WEBAPP_ID --node ... --file ... -o /tmp/out` | 运行 AI 应用 |
 
 ## 更新能力目录
 

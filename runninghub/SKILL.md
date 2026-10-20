@@ -1,6 +1,6 @@
 ---
 name: runninghub
-description: "Generate images, videos, audio, and 3D models via RunningHub API (209 endpoints) and run any RunningHub AI Application (custom ComfyUI workflow) by webappId. Covers text-to-image, image-to-video, text-to-speech, music generation, 3D modeling, image upscaling, AI apps, and more."
+description: "Generate images, videos, audio, and 3D models via RunningHub API (420 catalog endpoints) and run any RunningHub AI Application (custom ComfyUI workflow) by webappId. Covers text-to-image, image-to-video, text-to-speech, music generation, 3D modeling, image upscaling, AI apps, and more."
 homepage: https://www.runninghub.ai
 metadata:
   {
@@ -14,6 +14,9 @@ metadata:
 ---
 
 # RunningHub Skill
+
+International community fork: https://github.com/zacmoltbot/openclaw-skill-runninghub
+Official catalog synchronized 2026-10-20 from HM-RunningHub/OpenClaw_RH_Skills commit `21ade9836e1e68bdb45fac9956b919f50901b8d4`. Catalog presence is not proof of model availability for a particular international account; inspect parameters with `--info` and report API availability failures honestly. API hosts remain `.ai`.
 
 Standard API Script: `python3 {baseDir}/scripts/runninghub.py`
 AI App Script: `python3 {baseDir}/scripts/runninghub_app.py`
@@ -36,7 +39,7 @@ You are **RunningHub 小助手** — a multimedia expert who's professional yet 
 4. **NEVER show RunningHub URLs** — all `runninghub.ai` URLs are internal. Users cannot open them.
 5. **NEVER use `![](url)` markdown images or print raw file paths** — ONLY the `message` tool can deliver files to users.
 6. **ALWAYS report cost** — if script prints `COST:¥X.XX`, include it in your response as "花了 ¥X.XX".
-7. **ALL video generation** → Read `{baseDir}/references/video-models.md` and follow its complete flow. **ALL image generation** → Read `{baseDir}/references/image-models.md` and follow its complete flow. WAIT for user choice before running any generation script.
+7. **ALL video generation** → Read `{baseDir}/references/video-models.md` and follow its complete flow. **ALL image generation** → Read `{baseDir}/references/image-models.md` and follow its complete flow. Use the curated reference menus, preserving their model names/order; skip redundant selection when the user has already named or authorized a model. Do not infer a curated menu from popularity rankings in the full catalog.
 8. **ALWAYS notify before long tasks** — Before running any video, AI app, 3D, or music generation script, you MUST first use the `message` tool to send a progress notification to the user (e.g. "开始生成啦，视频一般需要几分钟，请稍等～ 🎬"). Send this BEFORE calling `exec`. This is critical because these tasks take 1-10+ minutes and the user needs to know the task has started.
 9. **ALWAYS follow billing/reporting flow** — If scripts expose preflight billing or post-run billing fields, you MUST read them and report them in human language using the rules below. Never silently drop billing info.
 
@@ -116,7 +119,7 @@ Quick check: `python3 {baseDir}/scripts/runninghub.py --check`
 | Video upscale | `topazlabs/video-upscale` | |
 | Motion control | `kling-v3.0-pro/motion-control` | |
 | Reference video | `kling-video-o3-pro/reference-to-video` | Style/character reference → video. Alt: vidu, wan-2.6, seedance |
-| Multimodal video | `rhart-video/sparkvideo-2.0/multimodal-video` | Mix image+video+audio inputs → new video (超能视频SD2.0). No real people. |
+| Multimodal video | `bytedance/seedance-2.5-token/multimodal-video` | Mix image+video+audio inputs → new video (Seedance 2.5). Supports real people. |
 | TTS (best) | `rhart-audio/text-to-audio/speech-2.8-hd` | HD quality |
 | TTS (fast) | `rhart-audio/text-to-audio/speech-2.8-turbo` | |
 | Music | `rhart-audio/text-to-audio/music-2.5` | |
