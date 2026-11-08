@@ -6,7 +6,7 @@ Supports the 420-entry RunningHub capability catalog: image, video, audio, 3D, t
 Uses only Python stdlib and curl.
 
 Modes:
-  --check                          Account health check (key + balance)
+  --check                          Account health check (key + wallet / credits / coins)
   --list [--type T] [--task T]     List available endpoints
   --info ENDPOINT                  Show endpoint details
   --endpoint EP --prompt "..." ... Execute a generation task
@@ -193,7 +193,7 @@ def api_post(api_key: str, url: str, payload: dict, timeout: int = 60) -> dict:
                 "message": f"API authentication failed: {msg}",
                 "manage_url": "https://www.runninghub.ai/enterprise-api/sharedApi",
             }
-        elif any(k in code_str or k in msg_lower for k in ["balance", "insufficient", "余额", "credit"]):
+        elif any(k in code_str or k in msg_lower for k in ["balance", "insufficient", "余额", "餘額", "积分", "credit"]):
             error_result = {
                 "error": "INSUFFICIENT_BALANCE",
                 "message": f"Insufficient balance: {msg}",
@@ -267,6 +267,8 @@ def _safe_nested_values(obj) -> list[str]:
     values: list[str] = []
     if isinstance(obj, dict):
         for key, value in obj.items():
+            if value is None:          # e.g. usage "consumeMoney": null is not evidence of money billing
+                continue
             values.append(str(key))
             values.extend(_safe_nested_values(value))
     elif isinstance(obj, list):
@@ -281,15 +283,85 @@ def infer_billing_mode(*sources) -> str:
     haystack = " ".join(v.lower() for source in sources for v in _safe_nested_values(source))
     if not haystack:
         return "unknown"
-    has_coins = any(token in haystack for token in ["coin", "coins", "remaincoins", "consumecoins", "points"])
+    has_coins = any(token in haystack for token in ["coin", "coins", "remaincoins", "consumecoins"])
+    has_credits = any(token in haystack for token in ["credit", "remainpoint", "consumepoint", "chargedpoint", "points"])
     has_money = any(token in haystack for token in ["money", "balance", "remainmoney", "consumemoney", "currency", "cny", "rmb", "yuan"])
-    if has_money and has_coins:
+    kinds = [name for name, hit in (("balance", has_money), ("coins", has_coins), ("credits", has_credits)) if hit]
+    if len(kinds) > 1:
         return "mixed"
-    if has_money:
-        return "balance"
-    if has_coins:
-        return "coins"
-    return "unknown"
+    return kinds[0] if kinds else "unknown"
+
+
+# The platform moved from RH coins to Credits (2026-11). accountStatus now also
+# returns remainPoint (= Credits; not in the official doc yet, observed live
+# 2026-11-08). Old accounts may still only have remainCoins/remainMoney.
+CREDIT_FIELDS = ("remainPoint", "remainPoints", "remainCredit", "remainCredits")
+FUNDING_FIELDS = (("balance", ("remainMoney",)), ("coins", ("remainCoins",)), ("credits", CREDIT_FIELDS))
+
+
+def _first_field(data: dict, names) -> tuple[str | None, object]:
+    for name in names:
+        if name in data and data[name] is not None:
+            return name, data[name]
+    return None, None
+
+
+def funding_summary(data: dict) -> dict:
+    """Which funds the account reports. A missing field is 'unknown', never 0.
+
+    available: at least one reported fund is > 0
+    empty:     every fund (wallet, coins, credits) is reported and none is > 0
+    unknown:   nothing positive, and at least one fund is missing or unreadable
+    """
+    amounts, fields = {}, {}
+    for kind, names in FUNDING_FIELDS:
+        field, value = _first_field(data, names)
+        fields[kind] = field
+        amounts[kind] = _to_decimal(value)
+    positive = [kind for kind, amount in amounts.items() if amount is not None and amount > 0]
+    if positive:
+        state = "available"
+    elif all(amount is not None for amount in amounts.values()):
+        state = "empty"
+    else:
+        state = "unknown"
+    if len(positive) > 1:
+        mode = "mixed"
+    else:
+        mode = positive[0] if positive else "unknown"
+    return {"funding_status": state, "funded_by": positive, "billing_mode": mode,
+            "credits_field": fields["credits"] or "unknown"}
+
+
+def usage_spend(usage) -> dict:
+    """Per-task spend from a task's usage block; absent -> None (never guessed).
+
+    Credits tasks (observed 2026-11-08): {"settleMode": "POINT", "chargedPoint": "13.94",
+    "consumeCoins": null, ...}; legacy tasks: {"consumeCoins": "56", ...}.
+    """
+    out = {"credits": None, "coins": None, "money": None, "settle_mode": None}
+    if not isinstance(usage, dict):
+        return out
+    if usage.get("settleMode") not in (None, ""):
+        out["settle_mode"] = str(usage["settleMode"])
+    for key, value in usage.items():
+        low = str(key).lower()
+        kind = "coins" if "coin" in low else "credits" if ("point" in low or "credit" in low) else None
+        if kind and out[kind] is None and _to_decimal(value) is not None:
+            out[kind] = _decimal_to_str(_to_decimal(value))
+    money = usage.get("consumeMoney")
+    if money is None:
+        money = usage.get("thirdPartyConsumeMoney")
+    if _to_decimal(money) is not None:
+        out["money"] = _decimal_to_str(_to_decimal(money))
+    return out
+
+
+def emit_task_spend(usage):
+    spend = usage_spend(usage)
+    print(f"TASK_CREDITS:{_coerce_unknown(spend['credits'])}")
+    print(f"TASK_COINS:{_coerce_unknown(spend['coins'])}")
+    print(f"TASK_SETTLE_MODE:{_coerce_unknown(spend['settle_mode'])}")
 
 
 def fetch_account_status(api_key: str) -> dict:
@@ -303,6 +375,10 @@ def fetch_account_status(api_key: str) -> dict:
         "balance": "unknown",
         "currency": "unknown",
         "coins": "unknown",
+        "credits": "unknown",
+        "credits_field": "unknown",
+        "funding_status": "unknown",
+        "funded_by": [],
         "running_tasks": "unknown",
         "api_type": "unknown",
         "billing_mode": "unknown",
@@ -325,17 +401,24 @@ def fetch_account_status(api_key: str) -> dict:
         base["detail"] = resp.get("msg", "API key verification failed")
         return base
 
-    data = resp.get("data", {})
-    balance = data.get("remainMoney")
-    base["balance"] = _coerce_unknown(balance)
-    base["currency"] = _coerce_unknown(data.get("currency", "CNY"))
+    data = resp.get("data")
+    if not isinstance(data, dict):
+        data = {}
+    base["balance"] = _coerce_unknown(data.get("remainMoney"))
+    base["currency"] = _coerce_unknown(data.get("currency"))
     base["coins"] = _coerce_unknown(data.get("remainCoins"))
+    credits = _first_field(data, CREDIT_FIELDS)[1]
+    credits_num = _to_decimal(credits)
+    base["credits"] = _decimal_to_str(credits_num) if credits_num is not None else _coerce_unknown(credits)
     base["running_tasks"] = _coerce_unknown(data.get("currentTaskCounts"))
     base["api_type"] = _coerce_unknown(data.get("apiType"))
-    base["billing_mode"] = infer_billing_mode(data.get("apiType"), data)
 
-    balance_num = _to_decimal(balance)
-    base["status"] = "no_balance" if balance_num is not None and balance_num <= 0 else "ready"
+    funding = funding_summary(data)
+    base.update(funding)
+    # Only "every fund reported and none left" is no_balance. remainCoins "0" on a
+    # credits account, or a missing field, never blocks: the submit itself is the
+    # authority and its insufficient-balance error is reported as such.
+    base["status"] = "no_balance" if funding["funding_status"] == "empty" else "ready"
     return base
 
 
@@ -359,6 +442,9 @@ def emit_billing_report(before: dict | None, after: dict | None, preflight_mode:
     print(f"COINS_BEFORE:{_coerce_unknown(before.get('coins'))}")
     print(f"COINS_AFTER:{_coerce_unknown(after.get('coins'))}")
     print(f"COINS_DELTA:{_delta_str(before.get('coins'), after.get('coins'))}")
+    print(f"CREDITS_BEFORE:{_coerce_unknown(before.get('credits'))}")
+    print(f"CREDITS_AFTER:{_coerce_unknown(after.get('credits'))}")
+    print(f"CREDITS_DELTA:{_delta_str(before.get('credits'), after.get('credits'))}")
     print(f"RUNNING_TASKS_BEFORE:{_coerce_unknown(before.get('running_tasks'))}")
     print(f"RUNNING_TASKS_AFTER:{_coerce_unknown(after.get('running_tasks'))}")
     print(f"API_TYPE_BEFORE:{_coerce_unknown(before.get('api_type'))}")
@@ -410,33 +496,30 @@ def cmd_check(api_key_arg: str | None):
         }, ensure_ascii=False))
         return
 
-    if status["status"] == "no_balance":
-        print(json.dumps({
-            "status": "no_balance",
-            "key_prefix": key_prefix,
-            "key_source": key_source,
-            "balance": status["balance"],
-            "currency": status["currency"],
-            "coins": status["coins"],
-            "running_tasks": status["running_tasks"],
-            "api_type": status["api_type"],
-            "billing_mode": status["billing_mode"],
-            "message": "Wallet balance is zero. Recharge required.",
-            "recharge_url": "https://www.runninghub.ai/vip-rights/4",
-        }, ensure_ascii=False))
-        return
-
-    print(json.dumps({
-        "status": "ready",
+    out = {
+        "status": status["status"],
         "key_prefix": key_prefix,
         "key_source": key_source,
         "balance": status["balance"],
         "currency": status["currency"],
+        "credits": status["credits"],
         "coins": status["coins"],
+        "funding_status": status["funding_status"],
+        "funded_by": status["funded_by"],
         "running_tasks": status["running_tasks"],
         "api_type": status["api_type"],
         "billing_mode": status["billing_mode"],
-    }, ensure_ascii=False))
+    }
+    if status["status"] == "no_balance":
+        out["message"] = "Wallet balance, RH coins and credits are all zero. Recharge required."
+        out["recharge_url"] = "https://www.runninghub.ai/vip-rights/4"
+    elif status["funding_status"] == "unknown":
+        out["message"] = ("Key accepted; remaining funds could not be confirmed (a balance field is missing). "
+                          "Not treated as zero; the task submission decides.")
+    if _to_decimal(status["coins"]) == 0 and "coins" not in status["funded_by"] and status["funded_by"]:
+        out["note"] = ("coins is the legacy RH-coin balance and is 0 after the switch to credits; "
+                       "it does not mean the account is out of funds")
+    print(json.dumps(out, ensure_ascii=False))
 
 
 # ---------------------------------------------------------------------------
@@ -570,7 +653,7 @@ def poll_task(api_key: str, task_id: str) -> dict:
             error_msg = resp.get("errorMessage", "Unknown error")
             error_code = resp.get("errorCode", "")
             msg_lower = f"{error_msg} {error_code}".lower()
-            if any(k in msg_lower for k in ["balance", "insufficient", "余额", "credit"]):
+            if any(k in msg_lower for k in ["balance", "insufficient", "余额", "餘額", "积分", "credit"]):
                 print(json.dumps({
                     "error": "INSUFFICIENT_BALANCE",
                     "message": f"Task failed: {error_msg}",
@@ -865,6 +948,7 @@ def cmd_execute(args):
         if text_result:
             print(text_result)
             emit_billing_report(before_status, after_status, preflight_mode)
+            emit_task_spend(usage)
             if consume_money is not None:
                 print(f"COST:¥{consume_money}")
             if task_cost_time and str(task_cost_time) != "0":
@@ -891,6 +975,7 @@ def cmd_execute(args):
         fix_mov_to_mp4(full_path)
     print(f"OUTPUT_FILE:{full_path}")
     emit_billing_report(before_status, after_status, preflight_mode)
+    emit_task_spend(usage)
 
     if consume_money is not None:
         print(f"COST:¥{consume_money}")
@@ -912,7 +997,7 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""\
 Modes:
-  --check                           Check API key and account balance
+  --check                           Check API key and funds (wallet, credits, legacy coins)
   --list [--type T] [--task T]      List available endpoints
   --info ENDPOINT                   Show endpoint parameter details
   --endpoint EP [options]           Execute with specific endpoint

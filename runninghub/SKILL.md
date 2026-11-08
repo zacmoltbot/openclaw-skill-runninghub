@@ -56,42 +56,50 @@ Use this when the script prints a pre-run estimate / charging mode before execut
 - Explain it in human language:
   - `unknown`: 目前还看不出这次会怎么计费，先帮你跑，跑完再回报实际扣费情况。
   - `balance`: 这次预计会从余额扣款。
-  - `coins`: 这次预计会扣点数 / coins。
-  - `mixed`: 这次可能同时涉及余额与点数 / coins。
+  - `credits`: 这次预计会扣积分 / Credits。
+  - `coins`: 这次预计会扣旧 RH 币 / coins。
+  - `mixed`: 这次可能同时涉及余额与积分 / coins。
 - If preflight fields are absent, do not invent them.
 
-### B. Post-run billing report (`BILLING_MODE`, `BALANCE_*`, `COINS_*`)
+> **2026-11 Credits switch:** RunningHub moved platform tasks from RH coins to Credits (1 USD = 680 credits; enterprise API uses the wallet). `--check` now shows `credits` (from `remainPoint`) next to the legacy `coins` (`remainCoins`, `0` after the switch is normal). Never report "额度不足" from `coins: "0"`; only `status: no_balance` (every fund reported and all 0) or an `INSUFFICIENT_BALANCE` error from a real submission counts. A missing field is `unknown`, never 0. Details: `{baseDir}/references/api-key-setup.md`.
+
+### B. Post-run billing report (`BILLING_MODE`, `BALANCE_*`, `CREDITS_*`, `COINS_*`, `TASK_*`)
 
 After every completed run, you MUST inspect and report billing outcome from script output.
 
 Required reads after task completion:
 - `BILLING_MODE`
 - `BALANCE_DELTA`
+- `CREDITS_DELTA`
 - `COINS_DELTA`
 
 Also read related fields when present (for clearer wording):
 - `BALANCE_BEFORE`, `BALANCE_AFTER`
+- `CREDITS_BEFORE`, `CREDITS_AFTER`
 - `COINS_BEFORE`, `COINS_AFTER`
+- `TASK_CREDITS`, `TASK_COINS`, `TASK_SETTLE_MODE` — what this task's own usage record says it spent (credits come from `usage.chargedPoint`; `TASK_SETTLE_MODE:POINT` = paid in credits) (`unknown` = not reported; don't turn it into 0). Account deltas can include other tasks on the same account.
 
 Human-language interpretation:
 - `unknown`: 这次执行成功了，但脚本没有给出明确计费模式；若有 delta 就一起说明实际变化。
 - `balance`: 明确说是扣余额；优先说明 `BALANCE_DELTA`，有 before/after 就一起说。
-- `coins`: 明确说是扣点数 / coins；优先说明 `COINS_DELTA`，有 before/after 就一起说。
-- `mixed`: 明确说同时涉及余额与点数 / coins；把两边 delta 都讲清楚。
+- `credits`: 明确说是扣积分；优先说明 `TASK_CREDITS`，再说 `CREDITS_DELTA`。
+- `coins`: 明确说是扣旧 RH 币 / coins；优先说明 `COINS_DELTA`，有 before/after 就一起说。
+- `mixed`: 明确说同时涉及多种（余额／积分／coins）；把有变化的 delta 都讲清楚。
 
 ## Assistant Reporting Format
 
 Billing 回报顺序是硬性规则：
 
 1. **If preflight exists, say it first** — 先告知这次预计怎么计费，再继续执行说明。
-2. **After completion, always report final billing** — 不管用户有没有追问，都要读取并回报 `BILLING_MODE` / `BALANCE_DELTA` / `COINS_DELTA`。
+2. **After completion, always report final billing** — 不管用户有没有追问，都要读取并回报 `BILLING_MODE` / `BALANCE_DELTA` / `CREDITS_DELTA` / `COINS_DELTA`。
 3. **Use human wording, not raw field dump** — 可以引用数值，但不要只贴变量名。
 4. **If `COST:¥X.XX` is present, report it naturally too** — 例如「这次花了 ¥0.50，另外余额少了 0.50」；若两者语义重复，也要优先确保 billing mode + delta 有讲清楚。
 
 Suggested phrasing:
 - Preflight: `先跟你说一下，这次预计会从余额扣款，我这就开始跑～`
 - Post-run / balance: `搞定啦～ 这次是扣余额，余额减少 0.50；如果脚本有 before/after，就一起带上。`
-- Post-run / coins: `搞定啦～ 这次是扣点数，coins 少了 20。`
+- Post-run / credits: `搞定啦～ 这次扣了 63 积分，还剩 8900。`
+- Post-run / coins: `搞定啦～ 这次是扣旧 RH 币，coins 少了 20。`
 - Post-run / mixed: `搞定啦～ 这次同时动用了余额和点数：余额少了 0.50，coins 少了 20。`
 - Post-run / unknown: `搞定啦～ 这次脚本没明确标出计费模式，不过从结果看余额少了 0.50 / coins 少了 20。`
 

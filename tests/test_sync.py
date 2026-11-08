@@ -50,6 +50,37 @@ class SyncTests(unittest.TestCase):
         for field in ['BALANCE_DELTA:-0.5','COINS_DELTA:-10','BILLING_MODE:mixed']:
             self.assertIn(field, out.getvalue())
 
+    def test_credits_funding_and_legacy(self):
+        # credits account: coins 0 must not read as out of funds
+        f = rh.funding_summary({'remainCoins': '0', 'remainPoint': '500', 'remainMoney': '0'})
+        self.assertEqual((f['funding_status'], f['funded_by'], f['billing_mode']), ('available', ['credits'], 'credits'))
+        # legacy account without remainPoint: coins only, still available
+        f = rh.funding_summary({'remainCoins': '20', 'remainMoney': '0'})
+        self.assertEqual((f['funding_status'], f['billing_mode']), ('available', 'coins'))
+        # all reported and zero -> empty; missing field -> unknown, never empty
+        self.assertEqual(rh.funding_summary({'remainCoins': '0', 'remainPoint': '0', 'remainMoney': '0'})['funding_status'], 'empty')
+        self.assertEqual(rh.funding_summary({'remainCoins': '0', 'remainMoney': '0'})['funding_status'], 'unknown')
+        self.assertEqual(rh.funding_summary({'remainCoins': '2', 'remainPoint': '3'})['billing_mode'], 'mixed')
+
+    def test_fetch_status_credits_not_no_balance(self):
+        body = json.dumps({'code': 0, 'data': {'remainCoins': '0', 'remainMoney': '0', 'remainPoint': '88', 'currency': 'USD'}})
+        with patch.object(rh, 'curl_post_json', return_value=SimpleNamespace(returncode=0, stdout=body, stderr='')):
+            st = rh.fetch_account_status('k')
+        self.assertEqual((st['status'], st['credits'], st['coins']), ('ready', '88', '0'))
+
+    def test_task_spend_credits_and_legacy(self):
+        s = rh.usage_spend({'settleMode': 'POINT', 'chargedPoint': '13.94', 'consumeCoins': None, 'consumeMoney': None})
+        self.assertEqual((s['credits'], s['coins'], s['money'], s['settle_mode']), ('13.94', None, None, 'POINT'))
+        s = rh.usage_spend({'consumeCoins': '56'})
+        self.assertEqual((s['coins'], s['credits']), ('56', None))
+        self.assertEqual(rh.usage_spend(None)['credits'], None)
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            rh.emit_task_spend({'chargedPoint': '2'})
+            rh.emit_task_spend(None)
+        for field in ['TASK_CREDITS:2', 'TASK_COINS:unknown', 'TASK_SETTLE_MODE:unknown']:
+            self.assertIn(field, out.getvalue())
+
     def test_preflight_before_standard_submit(self):
         args = SimpleNamespace(api_key='test', endpoint='test', task=None, output=None)
         out = io.StringIO()

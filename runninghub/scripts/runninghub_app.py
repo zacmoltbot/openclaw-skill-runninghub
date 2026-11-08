@@ -6,7 +6,7 @@ Run any RunningHub AI Application (custom ComfyUI workflow) by webappId.
 Uses only Python stdlib and curl.
 
 Modes:
-  --check                          Account health check (key + balance)
+  --check                          Account health check (key + wallet / credits / coins)
   --list [--sort S] [--size N]     Browse AI applications
   --info WEBAPP_ID                 Show app's modifiable nodes
   --run WEBAPP_ID [options]        Execute an AI application task
@@ -37,6 +37,7 @@ from runninghub import (  # noqa: E402
     cmd_check,
     download_file_with_validation,
     emit_billing_report,
+    emit_task_spend,
     fetch_account_status,
     fix_mov_to_mp4,
     infer_billing_mode,
@@ -450,6 +451,7 @@ def cmd_run(args):
             for text_value in text_results:
                 print(text_value)
             emit_billing_report(before_status, after_status, preflight_mode)
+            emit_task_spend(usage)
             if consume_money is not None:
                 print(f"COST:¥{consume_money}")
             if task_cost_time and str(task_cost_time) != "0":
@@ -488,6 +490,7 @@ def cmd_run(args):
         print(f"OUTPUT_FILE:{full_path}")
 
     emit_billing_report(before_status, after_status, preflight_mode)
+    emit_task_spend(usage)
     if consume_money is not None:
         print(f"COST:¥{consume_money}")
     if task_cost_time and str(task_cost_time) != "0":
@@ -511,7 +514,7 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""\
 Modes:
-  --check                           Check API key and account balance
+  --check                           Check API key and funds (wallet, credits, legacy coins)
   --list [--sort S] [--size N]      Browse AI applications
   --info WEBAPP_ID                  Show app's modifiable nodes
   --run WEBAPP_ID [options]         Execute an AI application task
